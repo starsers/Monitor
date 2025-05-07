@@ -7,6 +7,9 @@
 // - Documentation        https://dearimgui.com/docs (same as your local docs/ folder).
 // - Introduction, links and more at the top of imgui.cpp
 
+#include "monitor.h"
+#include <sys/mman.h>
+
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
@@ -71,11 +74,12 @@ int main(int, char**)
 #endif
 
     // Create window with graphics context
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "Dear ImGui GLFW+OpenGL3 example", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(60, 5, "Dear ImGui GLFW+OpenGL3 example", nullptr, nullptr);
     if (window == nullptr)
         return 1;
     glfwMakeContextCurrent(window);
-    glfwSwapInterval(1); // Enable vsync
+    // glfwSwapInterval(1); // Enable vsync
+    glfwSwapInterval(0); // Disable vsync
 
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
@@ -86,7 +90,7 @@ int main(int, char**)
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;         // Enable Docking
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;       // Enable Multi-Viewport / Platform Windows
     io.ConfigViewportsNoAutoMerge = true;
-    //io.ConfigViewportsNoTaskBarIcon = true;
+    io.ConfigViewportsNoTaskBarIcon = true;
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
@@ -129,6 +133,14 @@ int main(int, char**)
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
+    // 设置帧率上限
+    double target_fps = 60.0;
+    double frame_time = 1.0 / target_fps;
+
+    // 初始化摄像头
+    init_v4l2();
+    cv::Mat frame;
+
     // Main loop
 #ifdef __EMSCRIPTEN__
     // For an Emscripten build we are disabling file-system access, so let's not attempt to do a fopen() of the imgui.ini file.
@@ -139,6 +151,7 @@ int main(int, char**)
     while (!glfwWindowShouldClose(window))
 #endif
     {
+        glfwWaitEventsTimeout(frame_time);
         // Poll and handle events (inputs, window resize, etc.)
         // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
         // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
@@ -181,6 +194,13 @@ int main(int, char**)
 
             ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
             ImGui::End();
+        }
+        {
+            capture_frame(frame);
+            display_camera_frame(frame);
+            if (cv::waitKey(1) == 27) {  // 按Esc退出
+                break;
+            }
         }
 
         // 3. Show another simple window.
@@ -226,6 +246,12 @@ int main(int, char**)
 
     glfwDestroyWindow(window);
     glfwTerminate();
+
+    // 关闭设备，取消映射
+    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    ioctl(fd, VIDIOC_STREAMOFF, &type);
+    munmap(buffer, buf.length);
+    close(fd);
 
     return 0;
 }

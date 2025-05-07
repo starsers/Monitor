@@ -16,16 +16,30 @@ CXX = g++
 
 EXE = main
 IMGUI_DIR = imgui-docking
-SOURCES = main.cpp
+
+SOURCES = src/app/main.cpp
 SOURCES += $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp
 SOURCES += $(IMGUI_DIR)/backends/imgui_impl_glfw.cpp $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
+
+
+SRC_DIR = src
+INCLUDE_DIR = include
+MODELS = app monitor
+SRC_FILES = $(wildcard $(SRC_DIR)/*.cpp) $(foreach model, $(MODELS), $(wildcard $(SRC_DIR)/$(model)/*.cpp))
+OBJ_FILES = $(patsubst $(SRC_DIR)/%.cpp, %.o, $(SRC_FILES))
+
+SOURCES += $(SRC_FILES)
+
 OBJS = $(addsuffix .o, $(basename $(notdir $(SOURCES))))
 UNAME_S := $(shell uname -s)
 LINUX_GL_LIBS = -lGL
 
-CXXFLAGS = -std=c++11 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends
+CXXFLAGS = -std=c++17 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends
 CXXFLAGS += -g -Wall -Wformat
 LIBS =
+CXXFLAGS += $(foreach model,$(MODELS), -I$(INCLUDE_DIR)/$(model))
+CXXFLAGS += `pkg-config --cflags opencv4`
+LIBS     += `pkg-config --libs opencv4`
 
 ##---------------------------------------------------------------------
 ## OPENGL ES
@@ -77,6 +91,15 @@ endif
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 %.o:$(IMGUI_DIR)/backends/%.cpp
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+%.o:$(SRC_DIR)/%.cpp
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+%.o:$(SRC_DIR)/app/%.cpp
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+%.o:$(SRC_DIR)/monitor/%.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 all: $(EXE)
