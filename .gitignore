@@ -35,6 +35,10 @@
 imgui.ini
 imgui*.ini
 
+## Visual Studio Code artifacts
+.vscode
+*.code-workspace
+
 ## Visual Studio artifacts
 .vs
 ipch

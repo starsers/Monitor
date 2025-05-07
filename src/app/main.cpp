@@ -137,9 +137,7 @@ int main(int, char**)
     double target_fps = 60.0;
     double frame_time = 1.0 / target_fps;
 
-    // 初始化摄像头
-    init_v4l2();
-    cv::Mat frame;
+    Monitor monitor("/dev/video0");
 
     // Main loop
 #ifdef __EMSCRIPTEN__
@@ -196,11 +194,7 @@ int main(int, char**)
             ImGui::End();
         }
         {
-            capture_frame(frame);
-            display_camera_frame(frame);
-            if (cv::waitKey(1) == 27) {  // 按Esc退出
-                break;
-            }
+            monitor.display_dynamic();
         }
 
         // 3. Show another simple window.
@@ -247,11 +241,7 @@ int main(int, char**)
     glfwDestroyWindow(window);
     glfwTerminate();
 
-    // 关闭设备，取消映射
-    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    ioctl(fd, VIDIOC_STREAMOFF, &type);
-    munmap(buffer, buf.length);
-    close(fd);
+
 
     return 0;
 }
