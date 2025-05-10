@@ -20,8 +20,8 @@ class Camera {
     int fd;
     struct v4l2_format fmt;
     struct v4l2_buffer buf;
-    BufferInfo* buffers;  // 缓冲区数组
     unsigned int buffer_count;  // 缓冲区数量
+    BufferInfo* buffers;  // 缓冲区数组
     unsigned int current_buffer;  // 当前处理的缓冲区索引
     // 清理缓冲区的辅助函数
     void cleanup_buffers() {

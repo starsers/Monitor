@@ -147,29 +147,37 @@ void Camera::init_v4l2() {
     }
 }
 void Camera::capture_frame(cv::Mat& frame) {
+    if (fd < 0 || buffers == nullptr || buffer_count == 0) {
+        std::cerr << "摄像头未正确初始化，无法捕获帧" << std::endl;
+        return;
+    }
+    // 准备出队缓冲区
+    struct v4l2_buffer buf;
+    memset(&buf, 0, sizeof(buf));
+    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    buf.memory = V4L2_MEMORY_MMAP;
     
-        // 准备出队缓冲区
-        struct v4l2_buffer buf;
-        memset(&buf, 0, sizeof(buf));
-        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        buf.memory = V4L2_MEMORY_MMAP;
-        
-        // 出队缓冲区
-        if (ioctl(fd, VIDIOC_DQBUF, &buf) < 0) {
-            std::cerr << "无法出队缓冲区" << std::endl;
-            return;
-        }
-        
-        // 记录当前缓冲区索引
-        current_buffer = buf.index;
-        
-        // 将数据转换为OpenCV的Mat格式
-        frame = cv::Mat(fmt.fmt.pix.height, fmt.fmt.pix.width, CV_8UC2, buffers[current_buffer].start);
-        cv::cvtColor(frame, frame, cv::COLOR_YUV2BGR_YUYV);
-        
-        // 处理完毕，再次入队缓冲区
-        if (ioctl(fd, VIDIOC_QBUF, &buf) < 0) {
-            std::cerr << "无法入队缓冲区" << std::endl;
-            return;
-        }
+    // 出队缓冲区
+    if (ioctl(fd, VIDIOC_DQBUF, &buf) < 0) {
+        std::cerr << "无法出队缓冲区" << std::endl;
+        return;
+    }
+    
+    // 记录当前缓冲区索引
+    current_buffer = buf.index;
+    
+    if (fd < 0 || buffers == nullptr || buffer_count == 0) {
+        std::cerr << "摄像头未正确初始化，无法捕获帧" << std::endl;
+        return;
+    }
+    
+    // 将数据转换为OpenCV的Mat格式
+    frame = cv::Mat(fmt.fmt.pix.height, fmt.fmt.pix.width, CV_8UC2, buffers[current_buffer].start);
+    cv::cvtColor(frame, frame, cv::COLOR_YUV2BGR_YUYV);
+    
+    // 处理完毕，再次入队缓冲区
+    if (ioctl(fd, VIDIOC_QBUF, &buf) < 0) {
+        std::cerr << "无法入队缓冲区" << std::endl;
+        return;
+    }
 }
