@@ -74,7 +74,7 @@ int main(int, char**)
 #endif
 
     // Hide the window
-    glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);  // 设置 offscreen context 的标志位
+    // glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);  // 设置 offscreen context 的标志位
  
     // Create window with graphics context
     GLFWwindow* window = glfwCreateWindow(60, 5, "Dear ImGui GLFW+OpenGL3 example", nullptr, nullptr);

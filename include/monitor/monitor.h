@@ -102,7 +102,7 @@ public:
     void start_frame_grabbing_function(double fps = 30.0);
     void stop_frame_grabbing_function();
     bool is_frame_grabbing_active() const;
-
+    bool get_latest_recorded_frame(cv::Mat& out_frame);
 };
 
 

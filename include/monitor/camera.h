@@ -35,6 +35,7 @@ class Camera {
             buffers = nullptr;
         }
     }
+    std::mutex cam_mutex; // 新增互斥锁
     public:
         Camera();
         Camera(const char* device_path);

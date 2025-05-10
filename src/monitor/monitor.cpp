@@ -102,9 +102,17 @@ void Monitor::display(){
     display_camera_frame(frame);
 }
 void Monitor::display_dynamic(){
-
-    // 捕获一帧图像
-    camera->capture_frame(frame);
+    if (is_recording) {
+        // 录制时，从队列取最新帧
+        cv::Mat latest;
+        if (get_latest_recorded_frame(latest)) {
+            frame = latest;
+        }
+        // 如果队列为空，可以选择不刷新或显示上一帧
+    } else {
+        // 非录制时，直接采集新帧
+        camera->capture_frame(frame);
+    }
 
     display();
 }
@@ -354,4 +362,12 @@ void Monitor::record_button(){
         // 录制视频
         record();
     }
+}
+bool Monitor::get_latest_recorded_frame(cv::Mat& out_frame) {
+    std::lock_guard<std::mutex> lock(frame_mutex);
+    if (!frame_queue.empty()) {
+        out_frame = frame_queue.back().clone();
+        return true;
+    }
+    return false;
 }

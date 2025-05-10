@@ -1,4 +1,5 @@
 #include "camera.h"
+#include <poll.h>
 
 Camera::Camera() : device_path("/dev/video0"),
                    fd(-1),
@@ -147,10 +148,25 @@ void Camera::init_v4l2() {
     }
 }
 void Camera::capture_frame(cv::Mat& frame) {
+    std::lock_guard<std::mutex> lock(cam_mutex); // 加锁，作用域内自动解锁
     if (fd < 0 || buffers == nullptr || buffer_count == 0) {
         std::cerr << "摄像头未正确初始化，无法捕获帧" << std::endl;
         return;
     }
+
+    // 使用 poll 等待数据准备好
+    struct pollfd pfd;
+    pfd.fd = fd;
+    pfd.events = POLLIN;
+    int ret = poll(&pfd, 1, 2000); // 2秒超时
+    if (ret < 0) {
+        std::cerr << "poll 等待数据失败" << std::endl;
+        return;
+    } else if (ret == 0) {
+        std::cerr << "poll 等待超时，未收到摄像头数据" << std::endl;
+        return;
+    }
+
     // 准备出队缓冲区
     struct v4l2_buffer buf;
     memset(&buf, 0, sizeof(buf));
@@ -159,13 +175,20 @@ void Camera::capture_frame(cv::Mat& frame) {
     
     // 出队缓冲区
     if (ioctl(fd, VIDIOC_DQBUF, &buf) < 0) {
-        std::cerr << "无法出队缓冲区" << std::endl;
+        std::cerr << "无法出队缓冲区, errno=" << errno << " (" << strerror(errno) << ")" << std::endl;
         return;
     }
+    
     
     // 记录当前缓冲区索引
     current_buffer = buf.index;
     
+    // 检查缓冲区指针有效性
+    if (buffers[current_buffer].start == nullptr) {
+        std::cerr << "缓冲区指针无效" << std::endl;
+        return;
+    }
+
     if (fd < 0 || buffers == nullptr || buffer_count == 0) {
         std::cerr << "摄像头未正确初始化，无法捕获帧" << std::endl;
         return;
