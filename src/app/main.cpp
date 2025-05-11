@@ -20,6 +20,7 @@
 #endif
 #include <GLFW/glfw3.h> // Will drag system OpenGL headers
 
+#include <csignal>
 Monitor* global_monitor = nullptr;
 void signal_handler(int signum) {
     if (global_monitor) {

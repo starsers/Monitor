@@ -1,67 +1,55 @@
-#include "camera.h"
-#include <poll.h>
+#include "LinuxCam.h"
 
-Camera::Camera() : device_path("/dev/video0"),
-                   fd(-1),
-                   buffer_count(0),
-                   buffers(nullptr),
-                   current_buffer(0)
-{
+#ifdef __linux__
+#include <poll.h>
+#include <errno.h>
+#include <cstring>
+
+LinuxCam::LinuxCam() : BaseCam("/dev/video0"), 
+                        fd(-1),
+                        buffer_count(0),
+                        buffers(nullptr),
+                        current_buffer(0) {
     memset(&fmt, 0, sizeof(fmt)); // 初始化 fmt 结构体
-    // 初始化摄像头
-    init_v4l2();
+    init();
 }
 
-Camera::Camera(const char *device_path) : device_path(device_path),
-                                          fd(-1),
-                                          buffer_count(0),
-                                          buffers(nullptr),
-                                          current_buffer(0)
-{
+LinuxCam::LinuxCam(const std::string& device_path) : BaseCam(device_path),
+                                                      fd(-1),
+                                                      buffer_count(0),
+                                                      buffers(nullptr),
+                                                      current_buffer(0) {
     memset(&fmt, 0, sizeof(fmt)); // 初始化 fmt 结构体
     std::cout << "Init camera: " << device_path << std::endl;
-    init_v4l2();
+    init();
 }
 
-Camera::Camera(const std::string &device_path) : device_path(device_path), // 使用 std::string 而不是 c_str()
-                                                 fd(-1),
-                                                 buffer_count(0),
-                                                 buffers(nullptr),
-                                                 current_buffer(0)
-{
-    memset(&fmt, 0, sizeof(fmt)); // 初始化 fmt 结构体
-    init_v4l2();
+LinuxCam::~LinuxCam() {
+    release();
 }
-Camera::~Camera() {
-    if (fd >= 0) {  // 检查fd是否有效
-        // 关闭设备，取消映射
-        enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        ioctl(fd, VIDIOC_STREAMOFF, &type);
-        
-        // 清理所有缓冲区
-        cleanup_buffers();
-        
-        close(fd);
-        fd = -1;  // 防止重复关闭
+
+void LinuxCam::cleanup_buffers() {
+    if (buffers) {
+        for (unsigned int i = 0; i < buffer_count; ++i) {
+            if (buffers[i].start != MAP_FAILED && buffers[i].start != nullptr) {
+                munmap(buffers[i].start, buffers[i].length);
+                buffers[i].start = nullptr;
+            }
+        }
+        free(buffers);
+        buffers = nullptr;
     }
+    buffer_count = 0;
 }
-void Camera::initFrame(cv::Mat& frame) {
-    // 检查是否有可用的缓冲区
-    if (buffer_count > 0 && buffers != nullptr && buffers[0].start != nullptr) {
-        // 使用第一个缓冲区初始化帧
-        frame = cv::Mat(fmt.fmt.pix.height, fmt.fmt.pix.width, CV_8UC2, buffers[0].start);
-        cv::cvtColor(frame, frame, cv::COLOR_YUV2BGR_YUYV);
-    } else {
-        // 如果没有可用缓冲区，创建一个空帧
-        frame = cv::Mat(fmt.fmt.pix.height, fmt.fmt.pix.width, CV_8UC3, cv::Scalar(0, 0, 0));
-    }
-}
-void Camera::init_v4l2() {
+
+bool LinuxCam::init() {
+    std::lock_guard<std::mutex> lock(cam_mutex);
+    
     // 打开设备
     fd = open(device_path.c_str(), O_RDWR);
     if (fd < 0) {
-        std::cerr << "无法打开摄像头设备" << std::endl;
-        return;
+        std::cerr << "无法打开摄像头设备: " << device_path << std::endl;
+        return false;
     }
 
     // 设置视频格式
@@ -73,35 +61,37 @@ void Camera::init_v4l2() {
     if (ioctl(fd, VIDIOC_S_FMT, &fmt) < 0) {
         std::cerr << "无法设置视频格式" << std::endl;
         close(fd);
-        return;
+        fd = -1;
+        return false;
     }
 
     // 请求缓冲区
     struct v4l2_requestbuffers req;
+    memset(&req, 0, sizeof(req));
     req.count = 4;
     req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     req.memory = V4L2_MEMORY_MMAP;
     if (ioctl(fd, VIDIOC_REQBUFS, &req) < 0) {
         std::cerr << "无法请求缓冲区" << std::endl;
         close(fd);
-        return;
+        fd = -1;
+        return false;
     }
 
-     // 更新实际获得的缓冲区数量
-     buffer_count = req.count;
+    // 更新实际获得的缓冲区数量
+    buffer_count = req.count;
     
     // 安全地分配缓冲区结构数组
-    buffer_count = req.count;
     buffers = static_cast<BufferInfo*>(calloc(buffer_count, sizeof(BufferInfo)));
     if (!buffers) {
         std::cerr << "无法分配缓冲区内存" << std::endl;
         close(fd);
-        return;
+        fd = -1;
+        return false;
     }
 
     // 确保内存已清零
     memset(buffers, 0, buffer_count * sizeof(BufferInfo));
-
 
     // 映射所有缓冲区
     for (unsigned int i = 0; i < buffer_count; ++i) {
@@ -116,7 +106,8 @@ void Camera::init_v4l2() {
             std::cerr << "无法查询缓冲区 " << i << std::endl;
             cleanup_buffers();
             close(fd);
-            return;
+            fd = -1;
+            return false;
         }
         
         // 映射缓冲区
@@ -126,7 +117,8 @@ void Camera::init_v4l2() {
             std::cerr << "无法映射缓冲区 " << i << std::endl;
             cleanup_buffers();
             close(fd);
-            return;
+            fd = -1;
+            return false;
         }
         
         // 入队缓冲区以开始捕获
@@ -134,7 +126,8 @@ void Camera::init_v4l2() {
             std::cerr << "无法入队缓冲区 " << i << std::endl;
             cleanup_buffers();
             close(fd);
-            return;
+            fd = -1;
+            return false;
         }
     }
 
@@ -142,16 +135,41 @@ void Camera::init_v4l2() {
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (ioctl(fd, VIDIOC_STREAMON, &type) < 0) {
         std::cerr << "无法开启视频流" << std::endl;
-        cleanup_buffers();  // 使用我们的清理函数而不是直接 munmap
+        cleanup_buffers();
         close(fd);
-        return;
+        fd = -1;
+        return false;
     }
+    
+    initialized = true;
+    return true;
 }
-void Camera::capture_frame(cv::Mat& frame) {
-    std::lock_guard<std::mutex> lock(cam_mutex); // 加锁，作用域内自动解锁
+
+void LinuxCam::release() {
+    std::lock_guard<std::mutex> lock(cam_mutex);
+    
+    if (fd >= 0) {
+        // 停止视频流
+        enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        ioctl(fd, VIDIOC_STREAMOFF, &type);
+        
+        // 清理缓冲区
+        cleanup_buffers();
+        
+        // 关闭设备
+        close(fd);
+        fd = -1;
+    }
+    
+    initialized = false;
+}
+
+bool LinuxCam::capture_frame(cv::Mat& frame) {
+    std::lock_guard<std::mutex> lock(cam_mutex);
+    
     if (fd < 0 || buffers == nullptr || buffer_count == 0) {
         std::cerr << "摄像头未正确初始化，无法捕获帧" << std::endl;
-        return;
+        return false;
     }
 
     // 使用 poll 等待数据准备好
@@ -161,10 +179,10 @@ void Camera::capture_frame(cv::Mat& frame) {
     int ret = poll(&pfd, 1, 2000); // 2秒超时
     if (ret < 0) {
         std::cerr << "poll 等待数据失败" << std::endl;
-        return;
+        return false;
     } else if (ret == 0) {
         std::cerr << "poll 等待超时，未收到摄像头数据" << std::endl;
-        return;
+        return false;
     }
 
     // 准备出队缓冲区
@@ -176,9 +194,8 @@ void Camera::capture_frame(cv::Mat& frame) {
     // 出队缓冲区
     if (ioctl(fd, VIDIOC_DQBUF, &buf) < 0) {
         std::cerr << "无法出队缓冲区, errno=" << errno << " (" << strerror(errno) << ")" << std::endl;
-        return;
+        return false;
     }
-    
     
     // 记录当前缓冲区索引
     current_buffer = buf.index;
@@ -186,12 +203,7 @@ void Camera::capture_frame(cv::Mat& frame) {
     // 检查缓冲区指针有效性
     if (buffers[current_buffer].start == nullptr) {
         std::cerr << "缓冲区指针无效" << std::endl;
-        return;
-    }
-
-    if (fd < 0 || buffers == nullptr || buffer_count == 0) {
-        std::cerr << "摄像头未正确初始化，无法捕获帧" << std::endl;
-        return;
+        return false;
     }
     
     // 将数据转换为OpenCV的Mat格式
@@ -201,6 +213,24 @@ void Camera::capture_frame(cv::Mat& frame) {
     // 处理完毕，再次入队缓冲区
     if (ioctl(fd, VIDIOC_QBUF, &buf) < 0) {
         std::cerr << "无法入队缓冲区" << std::endl;
-        return;
+        return false;
+    }
+    
+    return true;
+}
+
+void LinuxCam::initFrame(cv::Mat& frame) {
+    std::lock_guard<std::mutex> lock(cam_mutex);
+    
+    // 检查是否有可用的缓冲区
+    if (buffer_count > 0 && buffers != nullptr && buffers[0].start != nullptr) {
+        // 使用第一个缓冲区初始化帧
+        frame = cv::Mat(fmt.fmt.pix.height, fmt.fmt.pix.width, CV_8UC2, buffers[0].start);
+        cv::cvtColor(frame, frame, cv::COLOR_YUV2BGR_YUYV);
+    } else {
+        // 如果没有可用缓冲区，创建一个空帧
+        frame = cv::Mat(fmt.fmt.pix.height, fmt.fmt.pix.width, CV_8UC3, cv::Scalar(0, 0, 0));
     }
 }
+
+#endif // __linux__

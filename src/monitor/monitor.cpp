@@ -397,7 +397,7 @@ bool Monitor::get_latest_recorded_frame(cv::Mat& out_frame) {
     return false;
 }
 
-std::vector<RecordInfo> get_all_record_info() {
+std::vector<RecordInfo> Monitor::get_all_record_info() {
     std::lock_guard<std::mutex> lock(record_info_mutex);
     std::vector<RecordInfo> infos;
     std::queue<RecordInfo> temp = record_info_queue;
@@ -406,4 +406,12 @@ std::vector<RecordInfo> get_all_record_info() {
         temp.pop();
     }
     return infos;
+}
+
+void Monitor::listAvailableCameras() {
+    auto devices = BaseCam::getAvailableDevices();
+    std::cout << "可用摄像头:" << std::endl;
+    for (size_t i = 0; i < devices.size(); ++i) {
+        std::cout << i << ": " << devices[i] << std::endl;
+    }
 }

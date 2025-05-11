@@ -9,7 +9,7 @@
 #include <opencv2/opencv.hpp>
 #include <imgui.h>
 #include <GL/gl.h>
-#include "camera.h"
+#include "Camera.h"
 #include <string>
 #include <thread>  // 添加线程支持
 #include <atomic>  // 添加原子变量支持
@@ -117,6 +117,8 @@ public:
     bool get_latest_recorded_frame(cv::Mat& out_frame);
     
     std::vector<RecordInfo> get_all_record_info();
+
+    void listAvailableCameras();
 };
 
 

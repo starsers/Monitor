@@ -28,12 +28,31 @@ SRC_DIR = src
 INCLUDE_DIR = include
 MODELS = app monitor
 SRC_FILES = $(wildcard $(SRC_DIR)/*.cpp) $(foreach model, $(MODELS), $(wildcard $(SRC_DIR)/$(model)/*.cpp))
+
+# 平台检测
+UNAME_S := $(shell uname -s)
+
+# 移除特定于平台的文件，以避免冲突
+ifeq ($(UNAME_S), Linux)
+    # 在Linux上，排除Windows特定文件
+    SRC_FILES := $(filter-out $(SRC_DIR)/monitor/WindowCam.cpp, $(SRC_FILES))
+    # 添加平台定义
+    CXXFLAGS += -D__linux__
+else
+    # 在Windows上，排除Linux特定文件
+    SRC_FILES := $(filter-out $(SRC_DIR)/monitor/LinuxCam.cpp, $(SRC_FILES))
+    # 添加Windows平台定义
+    ifeq ($(OS), Windows_NT)
+        CXXFLAGS += -D_WIN32
+    endif
+endif
+
 OBJ_FILES = $(patsubst $(SRC_DIR)/%.cpp, %.o, $(SRC_FILES))
 
 SOURCES += $(SRC_FILES)
 
 OBJS = $(addsuffix .o, $(basename $(notdir $(SOURCES))))
-UNAME_S := $(shell uname -s)
+
 LINUX_GL_LIBS = -lGL
 
 CXXFLAGS = -std=c++17 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends
@@ -42,6 +61,7 @@ LIBS =
 CXXFLAGS += $(foreach model,$(MODELS), -I$(INCLUDE_DIR)/$(model))
 CXXFLAGS += `pkg-config --cflags opencv4`
 LIBS     += `pkg-config --libs opencv4`
+
 
 ##---------------------------------------------------------------------
 ## OPENGL ES
