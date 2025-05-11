@@ -3,8 +3,10 @@
 # Compatible with MSYS2/MINGW, Ubuntu 14.04.1 and Mac OS X
 #
 # You will need GLFW (http://www.glfw.org):
+# You will also need OpenCV
 # Linux:
 #   apt-get install libglfw3-dev
+#   apt-get install libopencv-dev
 # Mac OS X:
 #   brew install glfw
 # MSYS2:
