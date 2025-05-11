@@ -59,8 +59,10 @@ CXXFLAGS = -std=c++17 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends
 CXXFLAGS += -g -Wall -Wformat
 LIBS =
 CXXFLAGS += $(foreach model,$(MODELS), -I$(INCLUDE_DIR)/$(model))
-CXXFLAGS += `pkg-config --cflags opencv4`
-LIBS     += `pkg-config --libs opencv4`
+CXXFLAGS += $(shell pkg-config --cflags opencv4)
+CXXFLAGS += $(shell pkg-config --cflags glfw3)
+LIBS     += $(shell pkg-config --libs opencv4)
+LIBS     += $(shell pkg-config --libs glfw3)
 
 
 ##---------------------------------------------------------------------
@@ -98,7 +100,7 @@ ifeq ($(OS), Windows_NT)
 	ECHO_MESSAGE = "MinGW"
 	LIBS += -lglfw3 -lgdi32 -lopengl32 -limm32
 
-	CXXFLAGS += `pkg-config --cflags glfw3`
+	CXXFLAGS += $(shell pkg-config --cflags glfw3)
 	CFLAGS = $(CXXFLAGS)
 endif
 

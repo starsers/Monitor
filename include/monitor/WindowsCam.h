@@ -9,7 +9,10 @@
 class WindowsCam : public BaseCam {
 private:
     cv::VideoCapture cap;
-    cv::Size frame_size{640, 480}; // 默认尺寸
+    cv::Mat current_frame;
+    bool initialized;
+    int frame_width{640};
+    int frame_height{480};
 
 public:
     WindowsCam();

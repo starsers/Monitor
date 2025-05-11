@@ -1,5 +1,4 @@
 #include "monitor.h"
-#include <sys/mman.h>
 
 
 
@@ -52,8 +51,9 @@ void Monitor::init() {
         init_texture(frame.cols, frame.rows);
         if (textureID != 0) {
             // 更新纹理数据
-            glBindTexture(GL_TEXTURE_2D, textureID);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, frame.cols, frame.rows, 0, GL_BGR, GL_UNSIGNED_BYTE, frame.data);
+            cv::Mat rgbFrame;
+            cv::cvtColor(frame, rgbFrame, cv::COLOR_BGR2RGB);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, rgbFrame.cols, rgbFrame.rows, 0, GL_RGB, GL_UNSIGNED_BYTE, rgbFrame.data);
         } else {
             std::cerr << "无法创建 OpenGL 纹理" << std::endl;
         }
@@ -68,7 +68,11 @@ void Monitor::update_texture(const cv::Mat& frame) {
         return;
     }
     glBindTexture(GL_TEXTURE_2D, textureID);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, frame.cols, frame.rows, GL_BGR, GL_UNSIGNED_BYTE, frame.data);
+    // 修改后 ✅
+    cv::Mat rgbFrame;
+    cv::cvtColor(frame, rgbFrame, cv::COLOR_BGR2RGB);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, rgbFrame.cols, rgbFrame.rows,
+                    GL_RGB, GL_UNSIGNED_BYTE, rgbFrame.data);
     GLenum err = glGetError();
     if (err != GL_NO_ERROR) {
         std::cerr << "OpenGL 错误: " << err << std::endl;

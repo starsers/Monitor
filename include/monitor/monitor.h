@@ -4,9 +4,13 @@
 #include <iostream>
 #include <fcntl.h>
 #include <unistd.h>
+// Windows 下不支持 sys/ioctl.h，需要屏蔽或替换
+#if defined(__linux__)
 #include <sys/ioctl.h>
-#include <linux/videodev2.h>
-#include <opencv2/opencv.hpp>
+#elif _WIN32
+#include <windows.h>
+#include <io.h> // 替代表头文件
+#endif
 #include <imgui.h>
 #include <GL/gl.h>
 #include "Camera.h"

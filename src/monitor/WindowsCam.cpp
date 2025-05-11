@@ -1,22 +1,22 @@
-#include "WindowCam.h"
+#include "WindowsCam.h"
 
 #ifdef _WIN32
 #include <algorithm>
 
-WindowCam::WindowCam() : BaseCam("0"), initialized(false) {
+WindowsCam::WindowsCam() : BaseCam("0"), initialized(false) {
     init();
 }
 
-WindowCam::WindowCam(const std::string& device_path) : BaseCam(device_path), initialized(false) {
+WindowsCam::WindowsCam(const std::string& device_path) : BaseCam(device_path), initialized(false) {
     std::cout << "Init camera: " << device_path << std::endl;
     init();
 }
 
-WindowCam::~WindowCam() {
+WindowsCam::~WindowsCam() {
     release();
 }
 
-bool WindowCam::init() {
+bool WindowsCam::init() {
     std::lock_guard<std::mutex> lock(cam_mutex);
     
     // 解析设备路径
@@ -67,7 +67,7 @@ bool WindowCam::init() {
     return true;
 }
 
-void WindowCam::release() {
+void WindowsCam::release() {
     std::lock_guard<std::mutex> lock(cam_mutex);
     
     if (cap.isOpened()) {
@@ -77,7 +77,7 @@ void WindowCam::release() {
     initialized = false;
 }
 
-bool WindowCam::capture_frame(cv::Mat& frame) {
+bool WindowsCam::capture_frame(cv::Mat& frame) {
     std::lock_guard<std::mutex> lock(cam_mutex);
     
     if (!cap.isOpened()) {
@@ -95,7 +95,7 @@ bool WindowCam::capture_frame(cv::Mat& frame) {
     return true;
 }
 
-void WindowCam::initFrame(cv::Mat& frame) {
+void WindowsCam::initFrame(cv::Mat& frame) {
     std::lock_guard<std::mutex> lock(cam_mutex);
     
     if (!current_frame.empty()) {

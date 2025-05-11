@@ -8,7 +8,6 @@
 // - Introduction, links and more at the top of imgui.cpp
 
 #include "monitor.h"
-#include <sys/mman.h>
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
