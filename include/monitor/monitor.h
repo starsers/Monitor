@@ -17,7 +17,15 @@
 #include <queue>   // 添加队列支持
 #include <condition_variable> // 添加条件变量支持
 
+#include <string>
+#include <chrono>
+#include <vector>
 
+struct RecordInfo {
+    std::string filename;
+    std::chrono::system_clock::time_point start_time;
+    std::chrono::system_clock::time_point end_time;
+};
 
 class Monitor {
     std::string device_path;
@@ -29,6 +37,10 @@ class Monitor {
     void display_camera_frame(const cv::Mat& frame);// 显示摄像头图像
     void takephoto();
     void record();// 录制视频
+
+    RecordInfo record_info_temp; // 录制信息
+    std::queue<RecordInfo> record_info_queue;
+    std::mutex record_info_mutex; // 保护队列并发访问
 
     // 异步录制所需的成员变量
     std::thread recording_thread;
@@ -103,6 +115,8 @@ public:
     void stop_frame_grabbing_function();
     bool is_frame_grabbing_active() const;
     bool get_latest_recorded_frame(cv::Mat& out_frame);
+    
+    std::vector<RecordInfo> get_all_record_info();
 };
 
 

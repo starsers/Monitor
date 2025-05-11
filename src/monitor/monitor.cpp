@@ -197,7 +197,7 @@ bool Monitor::is_recording_active() const {
 void Monitor::recording_worker() {
     cv::VideoWriter writer;
     bool writer_initialized = false;
-    
+
     while (!stop_recording) {
         // 等待新帧或停止信号
         std::unique_lock<std::mutex> lock(frame_mutex);
@@ -235,6 +235,9 @@ void Monitor::recording_worker() {
             
             writer_initialized = true;
             std::cout << "开始录制视频到：" << video_filename << std::endl;
+            record_info_temp.filename = video_filename;
+            record_info_temp.start_time = std::chrono::system_clock::now();
+
         }
         
         // 写入帧
@@ -245,6 +248,9 @@ void Monitor::recording_worker() {
     if (writer_initialized) {
         writer.release();
         std::cout << "视频录制完成：" << video_filename << std::endl;
+        record_info_temp.end_time = std::chrono::system_clock::now();
+        record_info_queue.push(record_info_temp);
+        std::cout << "录制信息已保存到队列" << std::endl;
     }
 }
 
@@ -389,4 +395,15 @@ bool Monitor::get_latest_recorded_frame(cv::Mat& out_frame) {
         return true;
     }
     return false;
+}
+
+std::vector<RecordInfo> get_all_record_info() {
+    std::lock_guard<std::mutex> lock(record_info_mutex);
+    std::vector<RecordInfo> infos;
+    std::queue<RecordInfo> temp = record_info_queue;
+    while (!temp.empty()) {
+        infos.push_back(temp.front());
+        temp.pop();
+    }
+    return infos;
 }
