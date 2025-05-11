@@ -20,6 +20,16 @@
 #endif
 #include <GLFW/glfw3.h> // Will drag system OpenGL headers
 
+Monitor* global_monitor = nullptr;
+void signal_handler(int signum) {
+    if (global_monitor) {
+        global_monitor->destroy(); // 释放资源（如摄像头、OpenGL纹理等）
+        delete global_monitor;     // 释放对象本身
+        global_monitor = nullptr;
+    }
+    exit(signum); // 退出程序
+}
+
 // [Win32] Our example includes a copy of glfw3.lib pre-compiled with VS2010 to maximize ease of testing and compatibility with old VS compilers.
 // To link with VS2010-era libraries, VS2015+ requires linking with legacy_stdio_definitions.lib, which we do using this pragma.
 // Your own project should not be affected, as you are likely to link with a newer binary of GLFW that is adequate for your version of Visual Studio.
@@ -140,7 +150,8 @@ int main(int, char**)
     double target_fps = 60.0;
     double frame_time = 1.0 / target_fps;
 
-    Monitor monitor("/dev/video0");
+    std::signal(SIGINT, signal_handler); // 注册信号处理函数
+    global_monitor = new Monitor("/dev/video0");
 
     // Main loop
 #ifdef __EMSCRIPTEN__
@@ -197,7 +208,7 @@ int main(int, char**)
             ImGui::End();
         }
         {
-            monitor.display_dynamic();
+            global_monitor->display_dynamic();
         }
 
         // 3. Show another simple window.
@@ -244,7 +255,7 @@ int main(int, char**)
     glfwDestroyWindow(window);
     glfwTerminate();
 
-
+    delete global_monitor; // 程序正常退出时也会释放
 
     return 0;
 }
