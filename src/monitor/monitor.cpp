@@ -50,13 +50,29 @@ void Monitor::init() {
         frame = tempFrame;
         // 初始化 OpenGL 纹理
         init_texture(frame.cols, frame.rows);
+        if (textureID != 0) {
+            // 更新纹理数据
+            glBindTexture(GL_TEXTURE_2D, textureID);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, frame.cols, frame.rows, 0, GL_BGR, GL_UNSIGNED_BYTE, frame.data);
+        } else {
+            std::cerr << "无法创建 OpenGL 纹理" << std::endl;
+        }
+        std::cout << "摄像头初始化成功，纹理 ID: " << textureID << std::endl;
     } else {
         std::cerr << "无法初始化摄像头帧，纹理未创建" << std::endl;
     }
 }
 void Monitor::update_texture(const cv::Mat& frame) {
+    if (frame.empty()) {
+        std::cerr << "update_texture: frame is empty!" << std::endl;
+        return;
+    }
     glBindTexture(GL_TEXTURE_2D, textureID);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, frame.cols, frame.rows, GL_BGR, GL_UNSIGNED_BYTE, frame.data);
+    GLenum err = glGetError();
+    if (err != GL_NO_ERROR) {
+        std::cerr << "OpenGL 错误: " << err << std::endl;
+    }
 }
 void Monitor::capture(){
     if(camera == nullptr){
@@ -90,16 +106,19 @@ void Monitor::display_camera_frame(const cv::Mat& frame) {
     update_texture(frame);
 
     // 使用 ImGui 显示纹理
-    ImGui::Begin("Monitor");
-    ImGui::Image((ImTextureID)(intptr_t)textureID, ImVec2(frame.cols, frame.rows));
+    start_window();
+    show_camera();
     ImGui::NextColumn();
     record_button();
     capture_button();
-    ImGui::End();
+    end_window();
 }
 
 void Monitor::display(){
-    display_camera_frame(frame);
+    std::lock_guard<std::mutex> lock(frame_mutex);
+    if (!frame.empty()) {
+        display_camera_frame(frame);
+    }
 }
 void Monitor::display_dynamic(){
     if (is_recording) {
