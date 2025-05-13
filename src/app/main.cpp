@@ -9,6 +9,7 @@
 
 #include "monitor.h"
 #include <sys/mman.h>
+#include <csignal>
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
