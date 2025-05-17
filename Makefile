@@ -7,6 +7,7 @@
 # Linux:
 #   apt-get install libglfw3-dev
 #   apt-get install libopencv-dev
+#   apt-get install libsqlite3-dev
 # Mac OS X:
 #   brew install glfw
 # MSYS2:
@@ -41,7 +42,10 @@ CXXFLAGS += -g -Wall -Wformat
 LIBS =
 CXXFLAGS += $(foreach model,$(MODELS), -I$(INCLUDE_DIR)/$(model))
 CXXFLAGS += `pkg-config --cflags opencv4`
+CXXFLAGS += `pkg-config --cflags sqlite3`
+
 LIBS     += `pkg-config --libs opencv4`
+LIBS     += `pkg-config --libs sqlite3`
 
 ##---------------------------------------------------------------------
 ## OPENGL ES
