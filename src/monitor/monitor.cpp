@@ -1,17 +1,56 @@
 #include "monitor.h"
 #include <sys/mman.h>
 
-
-
-
 Monitor::Monitor(const char* device_path):device_path(device_path) {
     camera = new Camera(device_path);
+    // 把device_path中的/转换为下划线
+    std::string device_path_str(device_path);
+    std::replace(device_path_str.begin(), device_path_str.end(), '/', '_');
+    std::string db_path = std::string(device_path_str) + ".db";
+    
+    db = new SQLiteDatabase(db_path);
+    db->connect();
+    init_database();
+
     init();
 }
 Monitor::Monitor(const std::string& device_path):device_path(device_path){
     camera = new Camera(device_path);
+    // 把device_path中的/转换为下划线
+    std::string device_path_str(device_path);
+    std::replace(device_path_str.begin(), device_path_str.end(), '/', '_');
+    std::string db_path = std::string(device_path_str) + ".db";
+    db = new SQLiteDatabase(db_path);
+    db->connect();
+    init_database();
     init();
 }
+void Monitor::init_database(){
+    if (!db->connect()) {
+        std::cerr << "连接数据库失败" << std::endl;
+        // 修复 void 函数中的返回值
+        return;
+    }
+    
+    // 修复原始字符串字面量语法
+    if (!db->createTable("record_info", 
+        R"(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 主键，唯一标识每条记录
+            video_path TEXT NOT NULL,              -- 视频文件的存储路径
+            start_time INTEGER NOT NULL,           -- 开始时间（Unix 时间戳，单位为秒）
+            end_time INTEGER,                      -- 结束时间（Unix 时间戳，单位为秒）
+            duration INTEGER GENERATED ALWAYS AS (end_time - start_time) STORED,  -- 持续时间（可选，自动计算）
+            CHECK(end_time IS NULL OR end_time >= start_time)
+        )")) {
+        std::cerr << "创建表失败" << std::endl;
+        // 修复 void 函数中的返回值
+        return;
+    }
+    
+    // 修复缺失的对象调用
+    db->execute("CREATE INDEX IF NOT EXISTS idx_start_end_time ON record_info(start_time, end_time);");
+}
+
 // 初始化 OpenGL 纹理
 void Monitor::init_texture(int width, int height) {
     if (textureID == 0) {
@@ -132,7 +171,6 @@ void Monitor::display_dynamic(){
         // 非录制时，直接采集新帧
         camera->capture_frame(frame);
     }
-
     display();
 }
 void Monitor::destroy(){
@@ -274,7 +312,7 @@ void Monitor::record() {
         // 开始录制
         std::string filename = "recording_" + 
             std::to_string(std::time(nullptr)) + ".mp4";  // 使用时间戳作为文件名
-        start_async_recording(filename);
+        start_async_recording(saving_path + filename);
     } else {
         // 停止录制
         stop_async_recording();
@@ -398,12 +436,84 @@ bool Monitor::get_latest_recorded_frame(cv::Mat& out_frame) {
 }
 
 std::vector<RecordInfo> Monitor::get_all_record_info() {
+    // 从数据库中获取所有记录信息
+    std::future<std::vector<std::vector<std::string>>> result;
+    result = db->asyncQuery("SELECT video_path, start_time, end_time FROM record_info;");
+    std::vector<std::vector<std::string>> db_infos = result.get();
+
     std::lock_guard<std::mutex> lock(record_info_mutex);
     std::vector<RecordInfo> infos;
+    // 将数据库中的记录信息转换为RecordInfo对象
+    for (const auto& db_info : db_infos) {
+        RecordInfo info;
+        info.filename = db_info[0];
+        info.start_time = std::chrono::system_clock::time_point(std::chrono::seconds(std::stoll(db_info[1])));
+        info.end_time = std::chrono::system_clock::time_point(std::chrono::seconds(std::stoll(db_info[2])));
+        infos.push_back(info);
+    }
     std::queue<RecordInfo> temp = record_info_queue;
     while (!temp.empty()) {
         infos.push_back(temp.front());
         temp.pop();
     }
     return infos;
+}
+std::string Monitor::convert_time_to_unix_timestamp(const std::chrono::system_clock::time_point& time_point){
+    return std::to_string(std::chrono::duration_cast<std::chrono::seconds>(time_point.time_since_epoch()).count());
+}
+
+std::vector<std::vector<std::string>> Monitor::search_video_from_timemap(std::string start_time, std::string end_time){
+    std::future<std::vector<std::vector<std::string>>> result;
+    result = db->asyncQuery("SELECT video_path FROM record_info WHERE start_time >= " + start_time + " AND end_time <= " + end_time +";");
+    return result.get();
+}
+
+std::vector<std::string> Monitor::search_video_from_target_time(std::string target_time){
+    std::future<std::vector<std::vector<std::string>>> result;
+    result = db->asyncQuery("SELECT video_path FROM record_info WHERE start_time <= " + target_time + " AND end_time >= " + target_time + ";");
+    // 处理查询结果
+    std::vector<std::vector<std::string>> get=result.get();
+    std::vector<std::string> found;
+    if(get.empty()){
+        std::cout << "没有找到符合条件的视频" << std::endl;
+        return found;
+    }
+    return get.at(0);
+}
+
+std::vector<RecordInfo> Monitor::get_recent_record_info(int num_records){
+    std::lock_guard<std::mutex> lock(record_info_mutex);
+    std::vector<RecordInfo> infos;
+    std::queue<RecordInfo> temp = record_info_queue;
+    int count = 0;
+    while (!temp.empty() && count < num_records) {
+        infos.push_back(temp.front());
+        temp.pop();
+        count++;
+    }
+    if (count < num_records) {
+        // 尝试从数据库中取出
+        std::vector<std::vector<std::string>> db_infos = db->query("SELECT video_path, start_time, end_time FROM record_info ORDER BY start_time DESC LIMIT " + std::to_string(num_records - count) + ";");
+        for (const auto& db_info : db_infos) {
+            RecordInfo info;
+            info.filename = db_info[0];
+            info.start_time = std::chrono::system_clock::time_point(std::chrono::seconds(std::stoll(db_info[1])));
+            info.end_time = std::chrono::system_clock::time_point(std::chrono::seconds(std::stoll(db_info[2])));
+            infos.push_back(info);
+        }
+    }
+    return infos;
+}
+
+bool Monitor::insert_record_info(const RecordInfo& record_info){
+    // 将记录信息插入数据库
+    return db->insertData("record_info", 
+        "video_path, start_time, end_time", 
+        "'" + record_info.filename + "', " + 
+        convert_time_to_unix_timestamp(record_info.start_time) + ", " + 
+        convert_time_to_unix_timestamp(record_info.end_time));
+}
+bool Monitor::delete_record_info(const std::string& filename){
+    // 删除数据库中的记录
+    return db->execute("DELETE FROM record_info WHERE video_path = '" + filename + "';");
 }

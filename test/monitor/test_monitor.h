@@ -205,3 +205,299 @@ public:
 };
 
 #endif // TEST_MONITOR_H
+#ifndef TEST_DATABASE_H
+#define TEST_DATABASE_H
+// Database operations test class to be added to test_monitor.h
+class DatabaseTests {
+public:
+    // Setup a test database 
+    static void setupTestDatabase() {
+        // Create a test database file
+        SQLiteDatabase testDb("test_monitor.db");
+        testDb.execute("DROP TABLE IF EXISTS videos");
+        testDb.execute("CREATE TABLE IF NOT EXISTS videos (filename TEXT PRIMARY KEY, start_time TEXT, end_time TEXT)");
+    }
+    
+    // Clean up test database
+    static void cleanupTestDatabase() {
+        // Remove test database file
+        std::remove("test_monitor.db");
+        std::cout << "Test database cleaned up." << std::endl;
+    }
+    
+    // Test the insert_record_info and get_all_record_info functions
+    static bool testInsertAndGetAllRecordInfo() {
+        setupTestDatabase();
+        
+        // Create a monitor instance with test database
+        Monitor monitor("/dev/null"); // Use null device to avoid real camera initialization
+        // Create test record info
+        RecordInfo record1;
+        record1.filename = "test_video1.mp4";
+        record1.start_time = std::chrono::system_clock::now();
+        record1.end_time = std::chrono::system_clock::now() + std::chrono::seconds(10);
+        
+        RecordInfo record2;
+        record2.filename = "test_video2.mp4";
+        record2.start_time = std::chrono::system_clock::now() + std::chrono::seconds(20);
+        record2.end_time = std::chrono::system_clock::now() + std::chrono::seconds(30);
+        
+        // Insert records
+        monitor.insert_record_info(record1);
+        monitor.insert_record_info(record2);
+        
+        // Get all records
+        std::vector<RecordInfo> records = monitor.get_all_record_info();
+        for(auto & record : records) {
+            std::cout << "Filename: " << record.filename << ", Start Time: " 
+                      << std::chrono::duration_cast<std::chrono::seconds>(record.start_time.time_since_epoch()).count() 
+                      << ", End Time: " 
+                      << std::chrono::duration_cast<std::chrono::seconds>(record.end_time.time_since_epoch()).count() 
+                      << std::endl;
+        }
+        // Verify the records were inserted
+        bool success = records.size() == 2;
+        std::cout << "Number of records in database: " << records.size() << std::endl;
+        if (!success) {
+            std::cerr << "Expected 2 records, got " << records.size() << std::endl;
+        } else {
+            bool record1Found = false;
+            bool record2Found = false;
+            
+            for (const auto& record : records) {
+                if (record.filename == "test_video1.mp4") {
+                    record1Found = true;
+                } else if (record.filename == "test_video2.mp4") {
+                    record2Found = true;
+                }
+            }
+            
+            success = record1Found && record2Found;
+            if (!success) {
+                std::cerr << "Not all records were found in the database" << std::endl;
+            }
+        }
+        
+        // Clean up inserted records
+        monitor.delete_record_info("test_video1.mp4");
+        monitor.delete_record_info("test_video2.mp4");
+        
+        cleanupTestDatabase();
+        
+        std::cout << "Insert and get all record info test " 
+                 << (success ? "passed!" : "failed!") << std::endl;
+        return success;
+    }
+    
+    // Test the get_recent_record_info function
+    static bool testGetRecentRecordInfo() {
+        setupTestDatabase();
+        
+        Monitor monitor("/dev/null");
+        
+        // Insert multiple records
+        for (int i = 0; i < 15; i++) {
+            RecordInfo record;
+            record.filename = "video_" + std::to_string(i) + ".mp4";
+            record.start_time = std::chrono::system_clock::now() + std::chrono::seconds(i * 10);
+            record.end_time = record.start_time + std::chrono::seconds(10);
+            monitor.insert_record_info(record);
+        }
+        
+        // Get recent 5 records
+        std::vector<RecordInfo> recentRecords = monitor.get_recent_record_info(5);
+        
+        // Verify we got 5 records
+        bool success = recentRecords.size() == 5;
+        if (!success) {
+            std::cerr << "Expected 5 recent records, got " << recentRecords.size() << std::endl;
+        }
+        
+        // Clean up
+        for (int i = 0; i < 15; i++) {
+            monitor.delete_record_info("video_" + std::to_string(i) + ".mp4");
+        }
+        
+        cleanupTestDatabase();
+        
+        std::cout << "Get recent record info test " 
+                 << (success ? "passed!" : "failed!") << std::endl;
+        return success;
+    }
+    
+    // Test the search_video_from_timemap function
+    static bool testSearchVideoFromTimemap() {
+        setupTestDatabase();
+        
+        Monitor monitor("/dev/null");
+        
+        // Current time for reference
+        auto now = std::chrono::system_clock::now();
+        
+        // Insert records with different time spans
+        for (int i = 0; i < 5; i++) {
+            RecordInfo record;
+            record.filename = "timemap_video_" + std::to_string(i) + ".mp4";
+            record.start_time = now + std::chrono::minutes(i * 10);
+            record.end_time = record.start_time + std::chrono::minutes(5);
+            monitor.insert_record_info(record);
+        }
+        
+        // Convert time points to unix timestamps for searching
+        auto startSearch = now + std::chrono::minutes(15);
+        auto endSearch = now + std::chrono::minutes(35);
+        
+        std::string startTimeStr = Monitor::convert_time_to_unix_timestamp(startSearch);
+        std::string endTimeStr = Monitor::convert_time_to_unix_timestamp(endSearch);
+        
+        // Search for videos in the time range
+        auto results = monitor.search_video_from_timemap(startTimeStr, endTimeStr);
+        for(auto & result : results) {
+            std::cout << "Found video: " << result[0] << std::endl;
+        }
+        // We expect to find videos 1, 2, and 3 in this range
+        bool success = results.size() == 3;
+        
+        // Clean up
+        for (int i = 0; i < 5; i++) {
+            monitor.delete_record_info("timemap_video_" + std::to_string(i) + ".mp4");
+        }
+        
+        
+        std::cout << "Search video from timemap test " 
+                 << (success ? "passed!" : "failed!") << std::endl;
+        return success;
+    }
+    
+    // Test the search_video_from_target_time function
+    static bool testSearchVideoFromTargetTime() {
+        setupTestDatabase();
+        
+        Monitor monitor("/dev/null");
+        
+        // Current time for reference
+        auto now = std::chrono::system_clock::now();
+        
+        // Insert records with different time spans
+        for (int i = 0; i < 5; i++) {
+            RecordInfo record;
+            record.filename = "target_video_" + std::to_string(i) + ".mp4";
+            record.start_time = now + std::chrono::minutes(i * 10);
+            record.end_time = record.start_time + std::chrono::minutes(5);
+            monitor.insert_record_info(record);
+        }
+        
+        // Search for a video at a specific time - should find video_2
+        auto targetTime = now + std::chrono::minutes(22); // Inside the time span of video_2
+        std::string targetTimeStr = Monitor::convert_time_to_unix_timestamp(targetTime);
+        
+        auto results = monitor.search_video_from_target_time(targetTimeStr);
+        
+        bool success = results.size() == 1 && results[0] == "target_video_2.mp4";
+        
+        // Clean up
+        for (int i = 0; i < 5; i++) {
+            if(monitor.delete_record_info("target_video_" + std::to_string(i) + ".mp4")){
+                std::cout << "Deleted target_video_" << i << ".mp4" << std::endl;
+            } else {
+                std::cerr << "Failed to delete target_video_" << i << ".mp4" << std::endl;
+            };
+        }
+        
+        
+        std::cout << "Search video from target time test " 
+                 << (success ? "passed!" : "failed!") << std::endl;
+        return success;
+    }
+    
+    // Test the delete_record_info function
+    static bool testDeleteRecordInfo() {
+        setupTestDatabase();
+        
+        Monitor monitor("/dev/null");
+        
+        // Insert a record
+        RecordInfo record;
+        record.filename = "delete_test_video.mp4";
+        record.start_time = std::chrono::system_clock::now();
+        record.end_time = record.start_time + std::chrono::seconds(10);
+        monitor.insert_record_info(record);
+        
+        // Verify the record exists
+        auto allRecords = monitor.get_all_record_info();
+        bool recordExists = false;
+        for (const auto& r : allRecords) {
+            if (r.filename == "delete_test_video.mp4") {
+                recordExists = true;
+                break;
+            }
+        }
+        
+        if (!recordExists) {
+            std::cerr << "Record was not inserted correctly for deletion test" << std::endl;
+            cleanupTestDatabase();
+            return false;
+        }
+        
+        // Delete the record
+        monitor.delete_record_info("delete_test_video.mp4");
+        
+        // Verify the record was deleted
+        allRecords = monitor.get_all_record_info();
+        bool recordDeleted = true;
+        for (const auto& r : allRecords) {
+            if (r.filename == "delete_test_video.mp4") {
+                recordDeleted = false;
+                break;
+            }
+        }
+        
+        cleanupTestDatabase();
+        
+        std::cout << "Delete record info test " 
+                 << (recordDeleted ? "passed!" : "failed!") << std::endl;
+        return recordDeleted;
+    }
+    static bool testInsert(){
+        Monitor monitor("/dev/null");
+        RecordInfo record;
+        record.filename = "test_video.mp4";
+        record.start_time = std::chrono::system_clock::now();
+        record.end_time = record.start_time + std::chrono::seconds(10);
+        if(monitor.insert_record_info(record)){
+            std::cout << "Inserted record: " << record.filename << std::endl;
+        } else {
+            std::cerr << "Failed to insert record: " << record.filename << std::endl;
+            return false;
+        };
+        
+        auto allRecords = monitor.get_all_record_info();
+        for(auto& r : allRecords){
+            std::cout << "Record filename: " << r.filename << std::endl;
+        }
+        bool recordExists = false;
+        for (const auto& r : allRecords) {
+            if (r.filename == "test_video.mp4") {
+                recordExists = true;
+                break;
+            }
+        }
+        
+        
+        std::cout << "Insert test " 
+                 << (recordExists ? "passed!" : "failed!") << std::endl;
+        return recordExists;
+    }
+
+    // Run all database tests
+    static void runAllTests() {
+        testInsertAndGetAllRecordInfo();
+        testGetRecentRecordInfo();
+        testSearchVideoFromTimemap();
+        testSearchVideoFromTargetTime();
+        testDeleteRecordInfo();
+        
+        std::cout << "All database tests completed." << std::endl;
+    }
+};
+#endif // TEST_DATABASE_H

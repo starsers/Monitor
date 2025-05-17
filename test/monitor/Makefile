@@ -45,7 +45,10 @@ CXXFLAGS += -I$(TESTINCLUDE_DIR)
 LIBS =
 CXXFLAGS += $(foreach model,$(MODELS), -I$(INCLUDE_DIR)/$(model))
 CXXFLAGS += `pkg-config --cflags opencv4`
+CXXFLAGS += `pkg-config --cflags sqlite3`
+
 LIBS     += `pkg-config --libs opencv4`
+LIBS     += `pkg-config --libs sqlite3`
 
 ##---------------------------------------------------------------------
 ## OPENGL ES

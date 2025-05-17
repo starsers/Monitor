@@ -21,6 +21,10 @@
 #include <chrono>
 #include <vector>
 
+#include <future>
+
+#include "database.h"
+
 struct RecordInfo {
     std::string filename;
     std::chrono::system_clock::time_point start_time;
@@ -28,6 +32,7 @@ struct RecordInfo {
 };
 
 class Monitor {
+    SQLiteDatabase* db;
     std::string device_path;
     Camera* camera;
     GLuint textureID;
@@ -72,7 +77,12 @@ class Monitor {
     // 异步视频帧采集线程的工作函数
     void frame_grabber_worker();
 
+
 public:
+    // 将chrono::time_point转换为Unix 时间戳
+    static std::string convert_time_to_unix_timestamp(const std::chrono::system_clock::time_point& time_point);
+public:
+    std::string saving_path="./";
     cv::Mat frame;
     Monitor(const char* device_path = "/dev/video0");
     Monitor(const std::string& device_path);
@@ -117,6 +127,23 @@ public:
     bool get_latest_recorded_frame(cv::Mat& out_frame);
     
     std::vector<RecordInfo> get_all_record_info();
+
+    void setDatabase(SQLiteDatabase db) {
+        delete this->db;
+        this->db = new SQLiteDatabase(db);
+        this->db->connect();
+        init_database();
+    }
+    SQLiteDatabase getDatabase() {
+        return *this->db;
+    }
+    // 数据库相关函数
+    void init_database();
+    std::vector<std::vector<std::string>> search_video_from_timemap(std::string start_time, std::string end_time);
+    std::vector<std::string> search_video_from_target_time(std::string target_time);
+    std::vector<RecordInfo> get_recent_record_info(int num_records=10);
+    bool insert_record_info(const RecordInfo& record_info);
+    bool delete_record_info(const std::string& filename);
 };
 
 
