@@ -223,6 +223,19 @@ void Monitor::stop_async_recording() {
         }
         
         is_recording = false;
+
+        // 存储数据数据到数据库
+        std::lock_guard<std::mutex> lock(record_info_mutex);
+        while (!record_info_queue.empty()) {
+            RecordInfo record_info = record_info_queue.front();
+            if(insert_record_info(record_info)){
+                    record_info_queue.pop();
+                    std::cout << "录制信息已保存到数据库" << std::endl;
+            }else{
+                std::cerr << "录制信息保存到数据库失败" << std::endl;
+                break;
+            }
+        }
     }
 }
 
