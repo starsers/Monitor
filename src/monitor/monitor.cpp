@@ -138,6 +138,9 @@ void Monitor::capture(){
 }
 void Monitor::update(){
     update_texture(frame);
+
+    // 检查并执行定时任务
+    check_and_execute_scheduled_tasks();
 }
 
 void Monitor::display_camera_frame(const cv::Mat& frame) {
@@ -147,30 +150,80 @@ void Monitor::display_camera_frame(const cv::Mat& frame) {
     // 使用 ImGui 显示纹理
     start_window();
     show_camera();
-    ImGui::NextColumn();
+    // 在结束窗口之前添加定时录制和视频查找功能
+    ImGui::Separator();
+    
+    // 基本控制按钮
+    ImGui::Text("Basic Controls");
+    ImGui::Columns(2, nullptr, false);
     record_button();
+    ImGui::NextColumn();
     capture_button();
+    ImGui::Columns(1);
+    
+    ImGui::Separator();
+    
+    // 定时录制控制
+    if (ImGui::CollapsingHeader("Scheduled Recording")) {
+        schedule_record_button();
+        ImGui::Separator();
+        schedule_stop_button();
+    }
+    
+    // 视频搜索界面
+    if (ImGui::CollapsingHeader("Video Search")) {
+        video_search_ui();
+    }
+    
     end_window();
 }
 
 void Monitor::display(){
     std::lock_guard<std::mutex> lock(frame_mutex);
     if (!frame.empty()) {
+        // 确保纹理有效
+        if (textureID == 0) {
+            std::cout << "Re-initializing texture for display" << std::endl;
+            init_texture(frame.cols, frame.rows);
+        }
         display_camera_frame(frame);
+    }
+    else {
+        std::cerr << "Frame is empty in display()" << std::endl;
     }
 }
 void Monitor::display_dynamic(){
+    bool frame_updated = false;
+    
     if (is_recording) {
         // 录制时，从队列取最新帧
         cv::Mat latest;
         if (get_latest_recorded_frame(latest)) {
-            frame = latest;
+            std::cout << "Got latest frame from recording queue" << std::endl;
+            frame = latest.clone();
+            frame_updated = true;
         }
-        // 如果队列为空，可以选择不刷新或显示上一帧
     } else {
         // 非录制时，直接采集新帧
-        camera->capture_frame(frame);
+        std::cout << "Attempting to capture new frame" << std::endl;
+        if (camera && camera->is_opened()) {
+            camera->capture_frame(frame);
+            frame_updated = true;
+        } else {
+            std::cerr << "Camera not available or not opened!" << std::endl;
+            // 尝试重新初始化摄像头
+            if (camera == nullptr) {
+                camera = new Camera(device_path);
+            }
+        }
     }
+    
+    if (frame_updated) {
+        std::cout << "Frame updated, size: " << frame.cols << "x" << frame.rows << std::endl;
+    } else {
+        std::cout << "No new frame captured" << std::endl;
+    }
+    
     display();
 }
 void Monitor::destroy(){
@@ -437,6 +490,209 @@ void Monitor::record_button(){
     if(ImGui::Button("Record")) {
         // 录制视频
         record();
+    }
+}
+// 在 record_button() 函数之后添加以下函数
+
+void Monitor::schedule_record_button() {
+    static char start_time[64] = "";
+    ImGui::InputText("Start Recording Time (YYYY-MM-DD HH:MM:SS)", start_time, 64);
+    
+    if (ImGui::Button("Schedule Recording Start")) {
+        // 解析时间字符串
+        std::tm tm = {};
+        std::istringstream ss(start_time);
+        ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+        
+        if (ss.fail()) {
+            std::cerr << "Invalid time format. Please use YYYY-MM-DD HH:MM:SS" << std::endl;
+        } else {
+            std::time_t time_t = std::mktime(&tm);
+            scheduled_record_time = std::chrono::system_clock::from_time_t(time_t);
+            schedule_recording = true;
+            
+            // 显示确认消息
+            auto now = std::chrono::system_clock::now();
+            auto diff = std::chrono::duration_cast<std::chrono::seconds>(scheduled_record_time - now).count();
+            std::cout << "Recording scheduled to start in " << diff << " seconds" << std::endl;
+        }
+    }
+    
+    if (schedule_recording) {
+        // 显示倒计时
+        auto now = std::chrono::system_clock::now();
+        auto diff = scheduled_record_time - now;
+        if (diff.count() > 0) {
+            auto seconds = std::chrono::duration_cast<std::chrono::seconds>(diff).count();
+            ImGui::Text("Recording will start in %lld seconds", seconds);
+        }
+    }
+}
+
+void Monitor::schedule_stop_button() {
+    static char stop_time[64] = "";
+    ImGui::InputText("Stop Recording Time (YYYY-MM-DD HH:MM:SS)", stop_time, 64);
+    
+    if (ImGui::Button("Schedule Recording Stop")) {
+        // 解析时间字符串
+        std::tm tm = {};
+        std::istringstream ss(stop_time);
+        ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+        
+        if (ss.fail()) {
+            std::cerr << "Invalid time format. Please use YYYY-MM-DD HH:MM:SS" << std::endl;
+        } else {
+            std::time_t time_t = std::mktime(&tm);
+            scheduled_stop_time = std::chrono::system_clock::from_time_t(time_t);
+            schedule_stop_recording = true;
+            
+            // 显示确认消息
+            auto now = std::chrono::system_clock::now();
+            auto diff = std::chrono::duration_cast<std::chrono::seconds>(scheduled_stop_time - now).count();
+            std::cout << "Recording scheduled to stop in " << diff << " seconds" << std::endl;
+        }
+    }
+    
+    if (schedule_stop_recording) {
+        // 显示倒计时
+        auto now = std::chrono::system_clock::now();
+        auto diff = scheduled_stop_time - now;
+        if (diff.count() > 0) {
+            auto seconds = std::chrono::duration_cast<std::chrono::seconds>(diff).count();
+            ImGui::Text("Recording will stop in %lld seconds", seconds);
+        }
+    }
+}
+
+bool Monitor::check_and_execute_scheduled_tasks() {
+    auto now = std::chrono::system_clock::now();
+    bool executed = false;
+    
+    // 检查是否需要开始录制
+    if (schedule_recording && now >= scheduled_record_time) {
+        // 如果未在录制，开始录制
+        if (!is_recording_active()) {
+            std::string filename = "scheduled_recording_" + 
+                std::to_string(std::time(nullptr)) + ".mp4";
+            start_async_recording(saving_path + filename);
+            std::cout << "Scheduled recording started" << std::endl;
+        }
+        schedule_recording = false;
+        executed = true;
+    }
+    
+    // 检查是否需要停止录制
+    if (schedule_stop_recording && now >= scheduled_stop_time) {
+        // 如果正在录制，停止录制
+        if (is_recording_active()) {
+            stop_async_recording();
+            std::cout << "Scheduled recording stopped" << std::endl;
+        }
+        schedule_stop_recording = false;
+        executed = true;
+    }
+    
+    return executed;
+}
+
+void Monitor::video_search_ui() {
+    ImGui::Text("Video Search");
+    ImGui::Separator();
+    
+    // 按时间范围搜索
+    static char start_time[64] = "";
+    static char end_time[64] = "";
+    ImGui::Text("Search by Time Range:");
+    ImGui::InputText("Start Time (YYYY-MM-DD HH:MM:SS)", start_time, 64);
+    ImGui::InputText("End Time (YYYY-MM-DD HH:MM:SS)", end_time, 64);
+    
+    if (ImGui::Button("Search Videos in Range")) {
+        // 解析时间字符串
+        std::tm start_tm = {}, end_tm = {};
+        std::istringstream start_ss(start_time), end_ss(end_time);
+        start_ss >> std::get_time(&start_tm, "%Y-%m-%d %H:%M:%S");
+        end_ss >> std::get_time(&end_tm, "%Y-%m-%d %H:%M:%S");
+        
+        if (start_ss.fail() || end_ss.fail()) {
+            std::cerr << "Invalid time format. Please use YYYY-MM-DD HH:MM:SS" << std::endl;
+        } else {
+            std::time_t start_time_t = std::mktime(&start_tm);
+            std::time_t end_time_t = std::mktime(&end_tm);
+            
+            // 转换为 Unix 时间戳字符串
+            search_start_time_str = std::to_string(start_time_t);
+            search_end_time_str = std::to_string(end_time_t);
+            
+            // 执行查询
+            auto search_result = search_video_from_timemap(search_start_time_str, search_end_time_str);
+            search_results.clear();
+            for (const auto& result : search_result) {
+                if (!result.empty()) {
+                    search_results.push_back(result[0]);
+                }
+            }
+            
+            show_search_results = true;
+        }
+    }
+    
+    ImGui::Separator();
+    
+    // 按特定时间点搜索
+    static char target_time[64] = "";
+    ImGui::Text("Search by Specific Time Point:");
+    ImGui::InputText("Time Point (YYYY-MM-DD HH:MM:SS)", target_time, 64);
+    
+    if (ImGui::Button("Find Video at Time Point")) {
+        // 解析时间字符串
+        std::tm target_tm = {};
+        std::istringstream target_ss(target_time);
+        target_ss >> std::get_time(&target_tm, "%Y-%m-%d %H:%M:%S");
+        
+        if (target_ss.fail()) {
+            std::cerr << "Invalid time format. Please use YYYY-MM-DD HH:MM:SS" << std::endl;
+        } else {
+            std::time_t target_time_t = std::mktime(&target_tm);
+            search_target_time_str = std::to_string(target_time_t);
+            
+            // 执行查询
+            search_results = search_video_from_target_time(search_target_time_str);
+            show_search_results = true;
+        }
+    }
+    
+    // 显示搜索结果
+    if (show_search_results) {
+        ImGui::Separator();
+        ImGui::Text("Search Results:");
+        
+        if (search_results.empty()) {
+            ImGui::Text("No videos found matching criteria");
+        } else {
+            for (size_t i = 0; i < search_results.size(); i++) {
+                ImGui::Text("%zu. %s", i + 1, search_results[i].c_str());
+                
+                // 添加播放按钮
+                ImGui::SameLine();
+                if (ImGui::Button(("Play##" + std::to_string(i)).c_str())) {
+                    // 调用系统命令播放视频
+                    std::string command = "xdg-open \"" + search_results[i] + "\" &";
+                    std::system(command.c_str());
+                }
+                
+                // 添加删除按钮
+                ImGui::SameLine();
+                if (ImGui::Button(("Delete##" + std::to_string(i)).c_str())) {
+                    if (delete_record_info(search_results[i])) {
+                        std::cout << "Record deleted from database: " << search_results[i] << std::endl;
+                        // 可以选择是否物理删除文件
+                        // std::remove(search_results[i].c_str());
+                        search_results.erase(search_results.begin() + i);
+                        i--; // 调整索引以避免跳过下一个元素
+                    }
+                }
+            }
+        }
     }
 }
 bool Monitor::get_latest_recorded_frame(cv::Mat& out_frame) {

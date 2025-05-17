@@ -77,7 +77,24 @@ class Monitor {
     // 异步视频帧采集线程的工作函数
     void frame_grabber_worker();
 
-
+        // 在 private 或 public 区域添加以下成员变量
+    bool schedule_recording = false;           // 是否已设置定时录制
+    bool schedule_stop_recording = false;      // 是否已设置定时停止录制
+    std::chrono::system_clock::time_point scheduled_record_time;    // 计划开始录制的时间
+    std::chrono::system_clock::time_point scheduled_stop_time;      // 计划停止录制的时间
+    
+    // 定时录制相关成员函数
+    void schedule_record_button();             // 定时开始录制按钮
+    void schedule_stop_button();               // 定时结束录制按钮
+    bool check_and_execute_scheduled_tasks();  // 检查并执行定时任务
+    
+    // 视频查找相关变量和函数
+    void video_search_ui();                    // 视频查找界面
+    std::string search_start_time_str = "";    // 开始时间字符串
+    std::string search_end_time_str = "";      // 结束时间字符串
+    std::string search_target_time_str = "";   // 目标时间字符串
+    std::vector<std::string> search_results;   // 存储搜索结果
+    bool show_search_results = false;          // 是否显示搜索结果
 public:
     // 将chrono::time_point转换为Unix 时间戳
     static std::string convert_time_to_unix_timestamp(const std::chrono::system_clock::time_point& time_point);
@@ -144,7 +161,10 @@ public:
     std::vector<RecordInfo> get_recent_record_info(int num_records=10);
     bool insert_record_info(const RecordInfo& record_info);
     bool delete_record_info(const std::string& filename);
+
+    
 };
+
 
 
 #endif // MONITOR_H
