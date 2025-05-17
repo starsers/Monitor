@@ -46,6 +46,13 @@ class Camera {
         void capture_frame(cv::Mat& frame);
         void init_v4l2();
         void initFrame(cv::Mat& frame);
+        bool is_opened(){
+            if (fd == -1) {
+                std::cerr << "摄像头未打开" << std::endl;
+                return false;
+            }
+            return true;
+        }
 };
 
 
