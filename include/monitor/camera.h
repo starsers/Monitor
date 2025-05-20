@@ -46,6 +46,9 @@ class Camera {
         void capture_frame(cv::Mat& frame);
         void init_v4l2();
         void initFrame(cv::Mat& frame);
+        bool is_opened() const{
+            return fd >= 0;
+        }
 };
 
 
