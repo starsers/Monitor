@@ -149,17 +149,24 @@ void Monitor::display_camera_frame(const cv::Mat& frame) {
 
     // 使用 ImGui 显示纹理
     start_window();
-    show_camera();
-    // 在结束窗口之前添加定时录制和视频查找功能
-    ImGui::Separator();
     
-    // 基本控制按钮
-    ImGui::Text("Basic Controls");
-    ImGui::Columns(2, nullptr, false);
+    // 明确的布局开始
+    ImGui::BeginGroup();
+    
+    // 摄像头显示区域
+    ImGui::BeginChild("CameraView", ImVec2(frame.cols, frame.rows), true);
+    show_camera();
+    ImGui::EndChild();
+    
+    ImGui::EndGroup();
+    
+    // 控制按钮区域
+    ImGui::SameLine();
+    ImGui::BeginGroup();
+    
     record_button();
-    ImGui::NextColumn();
+    ImGui::SameLine();
     capture_button();
-    ImGui::Columns(1);
     
     ImGui::Separator();
     
@@ -174,7 +181,7 @@ void Monitor::display_camera_frame(const cv::Mat& frame) {
     if (ImGui::CollapsingHeader("Video Search")) {
         video_search_ui();
     }
-    
+    ImGui::EndGroup();
     end_window();
 }
 
@@ -199,13 +206,13 @@ void Monitor::display_dynamic(){
         // 录制时，从队列取最新帧
         cv::Mat latest;
         if (get_latest_recorded_frame(latest)) {
-            std::cout << "Got latest frame from recording queue" << std::endl;
+            // std::cout << "Got latest frame from recording queue" << std::endl;
             frame = latest.clone();
             frame_updated = true;
         }
     } else {
         // 非录制时，直接采集新帧
-        std::cout << "Attempting to capture new frame" << std::endl;
+        // std::cout << "Attempting to capture new frame" << std::endl;
         if (camera && camera->is_opened()) {
             camera->capture_frame(frame);
             frame_updated = true;
@@ -218,11 +225,11 @@ void Monitor::display_dynamic(){
         }
     }
     
-    if (frame_updated) {
-        std::cout << "Frame updated, size: " << frame.cols << "x" << frame.rows << std::endl;
-    } else {
-        std::cout << "No new frame captured" << std::endl;
-    }
+    // if (frame_updated) {
+    //     std::cout << "Frame updated, size: " << frame.cols << "x" << frame.rows << std::endl;
+    // } else {
+    //     std::cout << "No new frame captured" << std::endl;
+    // }
     
     display();
 }
